@@ -1,0 +1,100 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: Parse csv files from S3 to Kinesis and save them to DynamoDB
+
+
+Parameters:
+    S3BUCKET:
+        Type: String
+        Description: The name of the bucket
+        MinLength: 3
+        MaxLength: 40
+        Default: csvkinesistodynamodbbucketdfa9e718
+        AllowedPattern: '^[a-zA-Z][a-zA-Z0-9_]*$'
+        ConstraintDescription: You need to specify a uniqu S3 bucket name for your project
+
+Globals:
+    Function:
+        Runtime: nodejs8.10
+        Timeout: 10
+        MemorySize: 128
+        Environment:
+            Variables:
+                TABLE_NAME: !Ref CustomerData
+                KINESIS_STREAM: !Ref S3KinesisStream
+                BUCKET_NAME: !Ref S3BUCKET
+
+
+Resources:
+    CustomerData:
+        Type: AWS::DynamoDB::Table
+        Description: Database table for holding customer informations
+        Properties:
+            AttributeDefinitions:
+                -   AttributeName: userId
+                    AttributeType: S
+            KeySchema:
+                -   AttributeName: userId
+                    KeyType: HASH
+            ProvisionedThroughput:
+                ReadCapacityUnits: 1
+                WriteCapacityUnits: 1
+
+    S3KinesisStream:
+        Type: AWS::Kinesis::Stream
+        Properties:
+            ShardCount: 1
+
+    CsvToKinesisFunction:
+        Type: AWS::Serverless::Function
+        Properties:
+            Handler: lambda-producer.handler
+            Description: This lambda function gets the data from s3 bucket and streams it into Kinesis Stream
+            Policies:
+                -   Version: 2012-10-17
+                    Statement:
+                        -   Effect: Allow
+                            Action:
+                                -   kinesis:PutRecord
+                                -   kinesis:PutRecords
+                            Resource: '*'
+                        -   Effect: Allow
+                            Action:
+                                -   s3:GetObject
+                            Resource: '*'
+            Events:
+                Upload:
+                    Type: S3
+                    Properties:
+                        Bucket: !Ref Bucket
+                        Events: 's3:ObjectCreated:*'
+
+    Bucket:
+        Type: AWS::S3::Bucket
+        Properties:
+            BucketName: !Ref S3BUCKET
+
+    WriteToDynamoDbFunction:
+        Type: AWS::Serverless::Function
+        Properties:
+            Handler: lambda-consumer.handler
+            Description: This lambda gets data from Kinesis Stream
+            Policies:
+                -   Version: 2012-10-17
+                    Statement:
+                        -   Effect: Allow
+                            Action:
+                                -   dynamodb:BatchWriteItem
+                                -   dynamodb:PutItem
+                            Resource: '*' # change to resource Arn
+            Events:
+                S3KinesisStream:
+                    Type: Kinesis
+                    Properties:
+                        Stream: !GetAtt S3KinesisStream.Arn
+                        StartingPosition: TRIM_HORIZON
+                        BatchSize: 1 # change to 10 since the lambda function can handle batches
+            ReservedConcurrentExecutions: 1 # It does throttle the execution, otherwise you'll exceed the provisioned throughput
+
+
+

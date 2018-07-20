@@ -1,0 +1,99 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Parse csv files from S3 to Kinesis and save them to DynamoDB
+Globals:
+  Function:
+    Environment:
+      Variables:
+        BUCKET_NAME:
+          Ref: S3BUCKET
+        KINESIS_STREAM:
+          Ref: S3KinesisStream
+        TABLE_NAME:
+          Ref: CustomerData
+    MemorySize: 128
+    Runtime: nodejs8.10
+    Timeout: 10
+Parameters:
+  S3BUCKET:
+    AllowedPattern: ^[a-zA-Z][a-zA-Z0-9_]*$
+    ConstraintDescription: You need to specify a uniqu S3 bucket name for your project
+    Default: csvkinesistodynamodbbucketdfa9e718
+    Description: The name of the bucket
+    MaxLength: 40
+    MinLength: 3
+    Type: String
+Resources:
+  Bucket:
+    Properties:
+      BucketName:
+        Ref: S3BUCKET
+    Type: AWS::S3::Bucket
+  CsvToKinesisFunction:
+    Properties:
+      CodeUri: s3://com.claudia-csv-upload/417192beaa5920a582095a793ab15cc1
+      Description: This lambda function gets the data from s3 bucket and streams it
+        into Kinesis Stream
+      Events:
+        Upload:
+          Properties:
+            Bucket:
+              Ref: Bucket
+            Events: s3:ObjectCreated:*
+          Type: S3
+      Handler: lambda-producer.handler
+      Policies:
+      - Statement:
+        - Action:
+          - kinesis:PutRecord
+          - kinesis:PutRecords
+          Effect: Allow
+          Resource: '*'
+        - Action:
+          - s3:GetObject
+          Effect: Allow
+          Resource: '*'
+        Version: 2012-10-17
+    Type: AWS::Serverless::Function
+  CustomerData:
+    Description: Database table for holding customer informations
+    Properties:
+      AttributeDefinitions:
+      - AttributeName: userId
+        AttributeType: S
+      KeySchema:
+      - AttributeName: userId
+        KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+    Type: AWS::DynamoDB::Table
+  S3KinesisStream:
+    Properties:
+      ShardCount: 1
+    Type: AWS::Kinesis::Stream
+  WriteToDynamoDbFunction:
+    Properties:
+      CodeUri: s3://com.claudia-csv-upload/417192beaa5920a582095a793ab15cc1
+      Description: This lambda gets data from Kinesis Stream
+      Events:
+        S3KinesisStream:
+          Properties:
+            BatchSize: 1
+            StartingPosition: TRIM_HORIZON
+            Stream:
+              Fn::GetAtt:
+              - S3KinesisStream
+              - Arn
+          Type: Kinesis
+      Handler: lambda-consumer.handler
+      Policies:
+      - Statement:
+        - Action:
+          - dynamodb:BatchWriteItem
+          - dynamodb:PutItem
+          Effect: Allow
+          Resource: '*'
+        Version: 2012-10-17
+      ReservedConcurrentExecutions: 1
+    Type: AWS::Serverless::Function
+Transform: AWS::Serverless-2016-10-31

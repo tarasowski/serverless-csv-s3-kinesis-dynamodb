@@ -1,0 +1,26 @@
+{
+  "name": "CsvToDynamoDb",
+  "version": "1.0.0",
+  "description": "",
+  "main": "lambda-consumer.js",
+  "scripts": {
+    "test": "No testing yet",
+    "folder": "rm -rf build && mkdir build",
+    "bucket": "aws s3api create-bucket --bucket com.claudia-csv-upload --region eu-west-1 --create-bucket-configuration LocationConstraint=eu-west-1",
+    "package": "aws cloudformation package --template-file template.yaml --output-template-file build/output.yaml --s3-bucket com.claudia-csv-upload",
+    "deploy": "aws cloudformation deploy --template-file build/output.yaml --stack-name fromS3toDynamoDb --capabilities CAPABILITY_NAMED_IAM",
+    "qd": "npm run folder && npm run package && npm run deploy",
+    "scotty": "aws s3 cp ./sample/sample-upload-24-records.csv s3://csvkinesistodynamodbbucketdfa9e718",
+    "lint": "eslint ./"
+  },
+  "dependencies": {
+    "highland": "^2.13.0",
+    "uuid": "^3.3.2"
+  },
+  "keywords": [],
+  "author": "Dimitri Tarasowski",
+  "license": "MIT",
+  "devDependencies": {
+    "eslint": "^5.1.0"
+  }
+}
